@@ -8,6 +8,9 @@ dist/
 
 **/notebooks
 
+# checkpoints
+checkpoints/
+
 # Ignore shell scripts
 *.sh
 
