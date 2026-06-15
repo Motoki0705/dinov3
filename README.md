@@ -647,6 +647,29 @@ Please adapt the [dataset class](dinov3/data/datasets/image_net_22k.py) to match
 
 ## Training
 
+### LoRA fine-tuning with the existing SSL pipeline
+
+The SSL meta-architecture can inject LoRA adapters into the student and EMA teacher
+backbones while freezing the original backbone parameters. DINO and iBOT heads keep
+using the existing optimization, augmentation, FSDP, and checkpointing pipeline.
+
+The supplied ViT-B/16 and ViT-L/16 configurations load the corresponding official
+consolidated backbone checkpoints:
+
+```shell
+PYTHONPATH=${PWD} python -m dinov3.run.submit dinov3/train/train.py \
+  --nodes 1 \
+  --config-file dinov3/configs/train/dinov3_vitb16_lora.yaml \
+  --output-dir <PATH/TO/OUTPUT/DIR> \
+  train.dataset_path=ImageNet:root=<PATH/TO/DATASET>:extra=<PATH/TO/EXTRA>
+```
+
+Use `dinov3/configs/train/dinov3_vitl16_lora.yaml` for ViT-L/16.
+
+`train.dataset_path` keeps the standard DINOv3 dataset descriptor contract. Support
+for pointing it directly at a future `images/` directory is intentionally separate
+from the LoRA training extension.
+
 ### Fast setup: training DINOv3 ViT-L/16 on ImageNet-1k
 
 Run DINOv3 pre-training on 4 H100-80GB nodes (32 GPUs) in a SLURM cluster environment with submitit:

@@ -271,10 +271,15 @@ def init_fsdp_model_from_checkpoint(
     skip_load_keys: List[str] | None = None,
     keys_not_sharded: List[str] | None = None,
     process_group: dist.ProcessGroup = None,
+    strict_loading: bool = True,
 ):
+    skip_load_keys = skip_load_keys or []
+    keys_not_sharded = keys_not_sharded or []
     if not Path(checkpoint_path).is_dir():  # PyTorch standard checkpoint
         logger.info(f"Loading pretrained weights from {checkpoint_path}")
-        chkpt = torch.load(checkpoint_path, map_location="cpu")["teacher"]
+        chkpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        if "teacher" in chkpt:
+            chkpt = chkpt["teacher"]
         from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
         if process_group is None:
@@ -293,15 +298,18 @@ def init_fsdp_model_from_checkpoint(
             )
             for key, tensor in chkpt.items()
         }
-        model.load_state_dict(
+        load_result = model.load_state_dict(
             {
                 key: tensor
                 for key, tensor in chkpt.items()
                 if not any(skip_load_key in key for skip_load_key in skip_load_keys)
-            }
+            },
+            strict=strict_loading,
         )
+        logger.info(f"Loaded pretrained weights with result: {load_result}")
+        return load_result
     else:  # DCP checkpoint
-        load_checkpoint(ckpt_dir=checkpoint_path, model=model, process_group=process_group)
+        return load_checkpoint(ckpt_dir=checkpoint_path, model=model, process_group=process_group)
 
 
 # Initialize a standard non distributed PyTorch model from PyTorch standard checkpoint for evals

@@ -1,0 +1,38 @@
+MODEL:
+  META_ARCHITECTURE: SSLMetaArch
+
+train:
+  batch_size_per_gpu: 4
+  dataset_path: ImageNet:split=TRAIN
+  num_workers: 8
+  OFFICIAL_EPOCH_LENGTH: 1250
+  compile: true
+
+student:
+  arch: vit_large
+  patch_size: 16
+  n_storage_tokens: 4
+  mask_k_bias: true
+  pretrained_weights: checkpoints/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth
+
+lora:
+  enabled: true
+  rank: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+  - attn.qkv
+  - attn.proj
+  freeze_backbone: true
+
+optim:
+  epochs: 20
+  lr: 0.0001
+  min_lr: 1.0e-06
+  warmup_epochs: 2
+  weight_decay: 0.0
+  weight_decay_end: 0.0
+  layerwise_decay: 1.0
+
+checkpointing:
+  period: 1250

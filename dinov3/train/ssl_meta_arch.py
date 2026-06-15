@@ -19,6 +19,7 @@ from dinov3.fsdp.ac_compile_parallelize import ac_compile_parallelize
 from dinov3.layers.dino_head import DINOHead
 from dinov3.loss import DINOLoss, GramLoss, KoLeoLoss, KoLeoLossDistributed, iBOTPatchLoss
 from dinov3.models import build_model_from_cfg
+from dinov3.models.lora import apply_lora, reset_lora_parameters
 from dinov3.train.cosine_lr_scheduler import linear_warmup_cosine_decay
 from dinov3.train.param_groups import fuse_params_groups, get_params_groups_with_decay_fsdp
 from dinov3.utils import count_parameters
@@ -50,6 +51,23 @@ class SSLMetaArch(nn.Module):
         gram_model_dict = dict()
 
         student_backbone, teacher_backbone, embed_dim = build_model_from_cfg(cfg)
+        if cfg.lora.enabled:
+            lora_kwargs = {
+                "rank": cfg.lora.rank,
+                "alpha": cfg.lora.alpha,
+                "dropout": cfg.lora.dropout,
+                "target_modules": cfg.lora.target_modules,
+                "freeze_backbone": cfg.lora.freeze_backbone,
+            }
+            student_lora = apply_lora(student_backbone, **lora_kwargs)
+            teacher_lora = apply_lora(teacher_backbone, **lora_kwargs)
+            if student_lora.replaced_modules != teacher_lora.replaced_modules:
+                raise RuntimeError("Student and teacher LoRA modules do not match")
+            logger.info(
+                "LoRA enabled for %d backbone modules with %d trainable parameters",
+                len(student_lora.replaced_modules),
+                student_lora.trainable_parameters,
+            )
         torch.cuda.empty_cache()
         gc.collect()
         gram_backbone, _ = build_model_from_cfg(cfg, only_teacher=True)
@@ -296,10 +314,30 @@ class SSLMetaArch(nn.Module):
     def init_weights(self) -> None:
         # All weights are set to `nan` to ensure we initialize everything explicitly
         self.student.backbone.init_weights()
+        reset_lora_parameters(self.student.backbone)
         self.student.dino_head.init_weights()
         self.student.ibot_head.init_weights()
         self.dino_loss.init_weights()
         self.ibot_patch_loss.init_weights()
+        if self.cfg.student.pretrained_weights:
+            logger.info(f"Loading pretrained backbone weights from {self.cfg.student.pretrained_weights}")
+            load_result = init_fsdp_model_from_checkpoint(
+                self.student.backbone,
+                self.cfg.student.pretrained_weights,
+                skip_load_keys=[],
+                keys_not_sharded=["rope_embed.periods", "qkv.bias_mask"],
+                process_group=distributed.get_process_subgroup(),
+                strict_loading=False,
+            )
+            if hasattr(load_result, "missing_keys"):
+                non_lora_missing = [
+                    key for key in load_result.missing_keys if not key.endswith(("lora_A", "lora_B"))
+                ]
+                if non_lora_missing or load_result.unexpected_keys:
+                    raise RuntimeError(
+                        "Pretrained backbone is incompatible with the configured model: "
+                        f"missing={non_lora_missing}, unexpected={load_result.unexpected_keys}"
+                    )
         self.model_ema.load_state_dict(self.student.state_dict())
         if self.has_gram_teacher:
             if self.gram_ckpt is not None:
