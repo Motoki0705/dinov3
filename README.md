@@ -666,9 +666,38 @@ PYTHONPATH=${PWD} python -m dinov3.run.submit dinov3/train/train.py \
 
 Use `dinov3/configs/train/dinov3_vitl16_lora.yaml` for ViT-L/16.
 
-`train.dataset_path` keeps the standard DINOv3 dataset descriptor contract. Support
-for pointing it directly at a future `images/` directory is intentionally separate
-from the LoRA training extension.
+For a plain unlabeled image tree, use the `ImageDirectory` descriptor:
+
+```shell
+train.dataset_path=ImageDirectory:root=<PATH/TO/IMAGES>
+```
+
+### Wikimedia Commons tennis-court dataset
+
+The dataset utility queries Wikimedia Commons for color images matching
+`Tennis Court`, filters unsupported, small, grayscale, and duplicate images, and
+writes attribution and license metadata to `manifest.json`.
+
+```shell
+python tools/download_wikimedia_commons.py \
+  --max-images 100 \
+  --output-dir ../../data/dino_ssl/wikimedia_tennis_court
+```
+
+The default output directory is also `../../data/dino_ssl/wikimedia_tennis_court`
+relative to this repository. Train the LoRA configuration with the downloaded
+`images/` directory:
+
+```shell
+PYTHONPATH=${PWD} python -m dinov3.run.submit dinov3/train/train.py \
+  --nodes 1 \
+  --config-file dinov3/configs/train/dinov3_vitb16_lora.yaml \
+  --output-dir <PATH/TO/OUTPUT/DIR> \
+  train.dataset_path=ImageDirectory:root=../../data/dino_ssl/wikimedia_tennis_court/images
+```
+
+Wikimedia requires a descriptive User-Agent. Override `--user-agent` when a
+different operator contact should be recorded.
 
 ### Fast setup: training DINOv3 ViT-L/16 on ImageNet-1k
 
