@@ -128,4 +128,4 @@ def test_retry_after_does_not_become_the_sustained_request_delay():
     retry_wait = limiter.record_throttle(retry_after=11)
 
     assert retry_wait == 11
-    assert limiter.delay == 1.1
+    assert limiter.delay == 0.625

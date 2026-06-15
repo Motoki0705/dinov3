@@ -93,7 +93,7 @@ class AdaptiveRateLimiter:
 
     def record_throttle(self, retry_after: float | None) -> float:
         retry_wait = retry_after if retry_after is not None else max(1.0, self.delay * 2)
-        sustained_delay = max(self.delay * 1.5, min(retry_wait / 10, 2.0))
+        sustained_delay = max(self.delay * 1.25, min(retry_wait / 20, 1.0))
         self.delay = min(self.max_delay, sustained_delay)
         return retry_wait
 
