@@ -684,6 +684,23 @@ python tools/download_wikimedia_commons.py \
   --output-dir ../../data/dino_ssl/wikimedia_tennis_court
 ```
 
+For a long-running download, redirect the progress log and run it in the
+background:
+
+```shell
+nohup python tools/download_wikimedia_commons.py \
+  --max-images 10000 \
+  --output-dir ../../data/dino_ssl/wikimedia_tennis_court \
+  --overwrite \
+  > ../../outputs/dino_ssl/wikimedia_download_10000.log 2>&1 &
+```
+
+The downloader reuses HTTP connections, adapts its request rate when Wikimedia
+responds with throttling, and stores images at a maximum dimension of 512 pixels.
+It atomically checkpoints `manifest.json` every 25 accepted images and prints the
+current throughput and ETA. After an interruption, replace `--overwrite` with
+`--resume` to continue from the checkpointed images.
+
 The default output directory is also `../../data/dino_ssl/wikimedia_tennis_court`
 relative to this repository. Train the LoRA configuration with the downloaded
 `images/` directory:

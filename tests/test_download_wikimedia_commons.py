@@ -8,6 +8,7 @@ from PIL import Image
 from tools.download_wikimedia_commons import (
     CommonsFile,
     WikimediaCommonsClient,
+    _load_resume_state,
     build_dataset,
 )
 
@@ -68,6 +69,7 @@ def test_build_dataset_filters_grayscale_and_writes_attribution(tmp_path: Path):
         candidate_multiplier=2,
         min_dimension=128,
         min_color_difference=2.0,
+        output_max_dimension=256,
         jpeg_quality=90,
     )
 
@@ -77,21 +79,43 @@ def test_build_dataset_filters_grayscale_and_writes_attribution(tmp_path: Path):
     image_path = tmp_path / entries[0].filename
     assert image_path.is_file()
     assert entries[0].sha256 == hashlib.sha256(image_path.read_bytes()).hexdigest()
+    with Image.open(image_path) as image:
+        assert max(image.size) <= 256
 
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["num_images"] == 1
     assert manifest["images"][0]["artist"] == "Example author"
 
 
-def test_wikimedia_search_requires_query_in_file_title(monkeypatch):
+def test_wikimedia_search_starts_with_exact_phrase(monkeypatch):
     client = WikimediaCommonsClient(user_agent="test/1.0 (test@example.com)")
-    captured = {}
+    captured = []
 
     def fake_request_json(params):
-        captured.update(params)
+        captured.append(params)
         return {}
 
     monkeypatch.setattr(client, "_request_json", fake_request_json)
 
     assert list(client.search_files("Tennis Court", limit=1)) == []
-    assert captured["gsrsearch"] == 'intitle:"Tennis Court"'
+    assert captured[0]["gsrsearch"] == '"Tennis Court"'
+    assert any(params["gsrsearch"] == "Tennis Court" for params in captured)
+
+
+def test_resume_state_reuses_existing_images(tmp_path: Path):
+    entries = build_dataset(
+        client=FakeCommonsClient(),
+        query="Tennis Court",
+        output_dir=tmp_path,
+        max_images=1,
+        candidate_multiplier=2,
+        min_dimension=128,
+        min_color_difference=2.0,
+        output_max_dimension=256,
+        jpeg_quality=90,
+    )
+    resumed = _load_resume_state(tmp_path)
+
+    assert resumed.entries == entries
+    assert resumed.page_ids == {2}
+    assert len(resumed.pixel_hashes) == 1
