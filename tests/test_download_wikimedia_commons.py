@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from tools.download_wikimedia_commons import (
+    AdaptiveRateLimiter,
     CommonsFile,
     WikimediaCommonsClient,
     _load_resume_state,
@@ -119,3 +120,12 @@ def test_resume_state_reuses_existing_images(tmp_path: Path):
     assert resumed.entries == entries
     assert resumed.page_ids == {2}
     assert len(resumed.pixel_hashes) == 1
+
+
+def test_retry_after_does_not_become_the_sustained_request_delay():
+    limiter = AdaptiveRateLimiter(initial_delay=0.5, min_delay=0.25, max_delay=60)
+
+    retry_wait = limiter.record_throttle(retry_after=11)
+
+    assert retry_wait == 11
+    assert limiter.delay == 1.1
