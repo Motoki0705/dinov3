@@ -110,6 +110,15 @@ student:
   pos_embed_rope_dtype: bf16
   fp8_enabled: False  # Convert Linear layers to operate in fp8 precision
   fp8_filter: "blocks"  # Regex that must appear in module path; empty means everything
+lora:
+  enabled: false
+  rank: 8
+  alpha: 16
+  dropout: 0.0
+  target_modules:
+  - attn.qkv
+  - attn.proj
+  freeze_backbone: true
 teacher:
   momentum_teacher: 0.992
   final_momentum_teacher: 1

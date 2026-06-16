@@ -647,6 +647,75 @@ Please adapt the [dataset class](dinov3/data/datasets/image_net_22k.py) to match
 
 ## Training
 
+### LoRA fine-tuning with the existing SSL pipeline
+
+The SSL meta-architecture can inject LoRA adapters into the student and EMA teacher
+backbones while freezing the original backbone parameters. DINO and iBOT heads keep
+using the existing optimization, augmentation, FSDP, and checkpointing pipeline.
+
+The supplied ViT-B/16 and ViT-L/16 configurations load the corresponding official
+consolidated backbone checkpoints:
+
+```shell
+PYTHONPATH=${PWD} python -m dinov3.run.submit dinov3/train/train.py \
+  --nodes 1 \
+  --config-file dinov3/configs/train/dinov3_vitb16_lora.yaml \
+  --output-dir <PATH/TO/OUTPUT/DIR> \
+  train.dataset_path=ImageNet:root=<PATH/TO/DATASET>:extra=<PATH/TO/EXTRA>
+```
+
+Use `dinov3/configs/train/dinov3_vitl16_lora.yaml` for ViT-L/16.
+
+For a plain unlabeled image tree, use the `ImageDirectory` descriptor:
+
+```shell
+train.dataset_path=ImageDirectory:root=<PATH/TO/IMAGES>
+```
+
+### Wikimedia Commons tennis-court dataset
+
+The dataset utility queries Wikimedia Commons for color images matching
+`Tennis Court`, filters unsupported, small, grayscale, and duplicate images, and
+writes attribution and license metadata to `manifest.json`.
+
+```shell
+python tools/download_wikimedia_commons.py \
+  --max-images 100 \
+  --output-dir ../../data/dino_ssl/wikimedia_tennis_court
+```
+
+For a long-running download, redirect the progress log and run it in the
+background:
+
+```shell
+nohup python tools/download_wikimedia_commons.py \
+  --max-images 10000 \
+  --output-dir ../../data/dino_ssl/wikimedia_tennis_court \
+  --overwrite \
+  > ../../outputs/dino_ssl/wikimedia_download_10000.log 2>&1 &
+```
+
+The downloader reuses HTTP connections, adapts its request rate when Wikimedia
+responds with throttling, and stores images at a maximum dimension of 512 pixels.
+It atomically checkpoints `manifest.json` every 25 accepted images and prints the
+current throughput and ETA. After an interruption, replace `--overwrite` with
+`--resume` to continue from the checkpointed images.
+
+The default output directory is also `../../data/dino_ssl/wikimedia_tennis_court`
+relative to this repository. Train the LoRA configuration with the downloaded
+`images/` directory:
+
+```shell
+PYTHONPATH=${PWD} python -m dinov3.run.submit dinov3/train/train.py \
+  --nodes 1 \
+  --config-file dinov3/configs/train/dinov3_vitb16_lora.yaml \
+  --output-dir <PATH/TO/OUTPUT/DIR> \
+  train.dataset_path=ImageDirectory:root=../../data/dino_ssl/wikimedia_tennis_court/images
+```
+
+Wikimedia requires a descriptive User-Agent. Override `--user-agent` when a
+different operator contact should be recorded.
+
 ### Fast setup: training DINOv3 ViT-L/16 on ImageNet-1k
 
 Run DINOv3 pre-training on 4 H100-80GB nodes (32 GPUs) in a SLURM cluster environment with submitit:
