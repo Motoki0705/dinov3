@@ -716,6 +716,33 @@ PYTHONPATH=${PWD} python -m dinov3.run.submit dinov3/train/train.py \
 Wikimedia requires a descriptive User-Agent. Override `--user-agent` when a
 different operator contact should be recorded.
 
+### Exporting a LoRA-finetuned backbone
+
+The SSL run saves an EMA *teacher* checkpoint
+(`<OUTPUT_DIR>/eval/training_<iter>/teacher_checkpoint.pth`) shaped as
+`{"teacher": state_dict}`, where the backbone is nested under a `backbone.`
+prefix next to the DINO/iBOT heads and the attention projections still carry the
+LoRA adapters on top of the frozen base weights. Downstream code that consumes a
+backbone in isolation usually wants a *plain* `dinov3_vit*` state-dict that loads
+with `strict=True`.
+
+`tools/export_lora_backbone.py` folds each LoRA update back into its base weight
+(`W <- W + (alpha / rank) * (B @ A)`), drops the adapters and heads, and
+re-exports the state-dict of a freshly built reference backbone so the result
+matches the loader exactly:
+
+```shell
+PYTHONPATH=${PWD} python tools/export_lora_backbone.py \
+  --teacher <OUTPUT_DIR>/eval/training_24999/teacher_checkpoint.pth \
+  --output  <OUTPUT_DIR>/backbone_vitb16.pth \
+  --arch    dinov3_vitb16
+```
+
+Pass `--rank` / `--alpha` to match the `lora` block of the training config (the
+defaults match the supplied `dinov3_vitb16_lora.yaml` / `dinov3_vitl16_lora.yaml`,
+i.e. `rank=8`, `alpha=16`). The exported file is a plain
+`torch.save(state_dict)` that loads into `torch.hub.load(..., "<arch>")`.
+
 ### Fast setup: training DINOv3 ViT-L/16 on ImageNet-1k
 
 Run DINOv3 pre-training on 4 H100-80GB nodes (32 GPUs) in a SLURM cluster environment with submitit:
